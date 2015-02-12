@@ -1,0 +1,206 @@
+<?php
+
+/**
+ * Implements hook_ctools_plugin_api().
+ */
+function adapt_monitor_ctools_plugin_api($owner, $api) {
+  if ($owner == 'services' && $api == 'services') {
+    return array(
+      'version' => 3,
+      'file' => 'adapt_monitor.services.inc', // Optional parameter to indicate the file name to load.
+      'path' => drupal_get_path('module', 'adapt_monitor') . '/includes', // If specifying the file key, path is required.
+    );
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function adapt_monitor_menu() {
+  $items = array();
+
+  $items['admin/config/system/adapt-monitor'] = array(
+    'title' => 'Adapt monitoring',
+    'description' => 'Display monitoring information for drupal sites.',
+    'access callback' => TRUE,
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('adapt_monitor_admin_form'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  return $items;
+}
+
+function adapt_monitor_admin_form($form, &$form_state) {
+  $results = db_select('adapt_monitor', 'a')
+    ->fields('a')
+    ->execute();
+  foreach($results as $result) {
+    $data = unserialize($result->data);
+    $form['site_' . $result->sid] = array(
+      '#type' => 'fieldset',
+      '#title' => '',
+      '#collapsible' => FALSE,
+      '#collapsed' => FALSE,
+    );
+    $form['site_' . $result->sid]['info'] = array(
+      '#type' => 'item',
+      '#title' => '',
+      '#markup' => theme(
+        'adapt_monitor_info',
+        array(
+          'title' => $result->title,
+          'status' => $result->status,
+          'build' => $result->build,
+          'version' => $data['core']['drupal']['version'],
+        )
+      ),
+    );
+    $form['site_' . $result->sid]['versions'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('State'),
+      '#weight' => 5,
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+    );
+    foreach ($data['contrib'] as $name => $info) {
+      $form['site_' . $result->sid]['versions'][$name] = array(
+        '#type' => 'markup',
+        '#markup' => theme(
+          'adapt_monitor_item',
+          array(
+           'name' => $name,
+            'version' => $info['version']
+          )
+        )
+      );
+    }
+
+  }
+  return $form;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function adapt_monitor_permission() {
+  return array(
+    'adapt site report' => array(
+      'title' => t('Adapt site report'),
+      'description' => t('Report site status.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_services_resources().
+ */
+function adapt_monitor_services_resources() {
+  return array(
+    'adapt_monitor' => array(
+      'actions' => array(
+        'report' => array(
+          'help' => 'Report a site state',
+          'callback' => 'adapt_monitor_report',
+          'access arguments' => array('adapt site report'),
+          'access arguments append' => FALSE,
+          'args' => array(
+            array(
+              'name' => 'data',
+              'type' => 'json',
+              'description' => 'JSON data with site status information',
+              'source' => 'data',
+              'optional' => FALSE,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * Endpoint for adapt monitor site status.
+ *
+ * @param $data
+ *   array of structured data describing a site state.
+ * @return array
+ *   array with status of the request.
+ * @throws \Exception
+ */
+function adapt_monitor_report($data) {
+  if($data) {
+    $result = db_select('adapt_monitor', 'a')
+      ->condition('title', $data['site_id'])
+      ->fields('a', array('sid', 'build'))
+      ->execute()
+      ->fetchAssoc();
+    if(!empty($result)) {
+      if($result['build'] <> $data['Build']['buildNumber']) {
+        db_update('adapt_monitor')
+          ->fields(array(
+            'title' => $data['site_id'],
+            'build' => $data['Build']['buildNumber'],
+            'status' => 1,
+            'updated' => time(),
+            'data' => serialize($data)
+          ))
+          ->condition('sid', $result['sid'])
+          ->execute();
+      } else {
+        db_update('adapt_monitor')
+          ->fields(array(
+            'updated' => time(),
+          ))
+          ->condition('sid', $result['sid'])
+          ->execute();
+        return array(
+          'status' => 'received',
+          'message' => t('Active state maintained.'),
+        );
+      }
+    } else {
+      db_insert('adapt_monitor') // Table name no longer needs {}
+        ->fields(array(
+          'title' => $data['site_id'],
+          'build' => $data['Build']['buildNumber'],
+          'status' => 1,
+          'updated' => time(),
+          'data' => serialize($data)
+        ))
+        ->execute();
+    }
+
+    return array(
+      'status' => 'updated',
+      'message' => t('Data was updated.'),
+    );
+  }
+  return array(
+    'status' => 'error',
+    'message' => t('Empty package received.'),
+  );
+}
+
+function adapt_monitor_theme($existing, $type, $theme, $path){
+  return array(
+    'adapt_monitor_info' => array(
+      'variables' => array(
+        'title' => NULL,
+        'status' => NULL,
+        'build' => NULL,
+        'version' => NULL,
+      ),
+      'template' => 'adapt-monitor-info',
+      'path' => $path . '/tpl',
+    ),
+    'adapt_monitor_item' => array(
+      'variables' => array(
+        'name' => NULL,
+        'version' => NULL,
+      ),
+      'template' => 'adapt-monitor-item',
+      'path' => $path . '/tpl',
+    ),
+  );
+}

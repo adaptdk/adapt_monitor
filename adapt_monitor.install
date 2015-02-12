@@ -1,0 +1,52 @@
+<?php
+/**
+ * Implements hook_schema().
+ */
+function adapt_monitor_schema() {
+  $schema['adapt_monitor'] = array(
+    'description' => 'Table containing sites states.',
+    'fields' => array(
+      'sid' => array(
+        'description' => 'The primary identifier for a site.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'title' => array(
+        'description' => 'The title of a site',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'build' => array(
+        'description' => 'The current build number of a site',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'status' => array(
+        'description' => 'The status of a site',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1
+      ),
+      'updated' => array(
+        'description' => 'The Unix timestamp when the site was updated.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'data' => array(
+        'type' => 'blob',
+        'not null' => FALSE,
+        'size' => 'big',
+        'serialize' => TRUE,
+        'description' => 'A serialized array of additional data.',
+      ),
+    ),
+    'primary key' => array('sid'),
+  );
+  return $schema;
+}

@@ -1,0 +1,5 @@
+name = Adapt monitor
+description = Monitor drupal site status
+core = 7.x
+
+dependencies[] = services
