@@ -37,6 +37,7 @@ function adapt_monitor_admin_form($form, &$form_state) {
     ->execute();
   foreach($results as $result) {
     $data = unserialize($result->data);
+    dpm($data);
     $form['site_' . $result->sid] = array(
       '#type' => 'fieldset',
       '#title' => '',
@@ -77,6 +78,9 @@ function adapt_monitor_admin_form($form, &$form_state) {
     }
 
   }
+  $form['#attached']['css'] = array(
+    drupal_get_path('module', 'adapt_monitor') . '/adapt_monitor.css'
+  );
   return $form;
 }
 

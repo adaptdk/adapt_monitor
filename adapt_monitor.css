@@ -1,0 +1,25 @@
+#edit-info {
+  margin: 0;
+}
+
+fieldset {
+  margin-top: 0;
+}
+
+.adapt-monitor-info {
+  clear: both;
+  overflow: hidden;
+}
+.adapt-monitor-info div {
+  float: left;
+  margin: 10px 20px 0 0;
+}
+
+.adapt-monitor-info .status {
+  width: 25px;
+  height: 25px;
+  overflow: hidden;
+}
+.adapt-monitor-info .status span {
+  display: none;
+}
