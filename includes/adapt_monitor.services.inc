@@ -4,13 +4,16 @@
  */
 function adapt_monitor_default_services_endpoint() {
   $endpoints = array();
+
   $endpoint = new stdClass();
   $endpoint->disabled = FALSE; /* Edit this to true to make a default endpoint disabled initially */
   $endpoint->api_version = 3;
   $endpoint->name = 'adapt_monitor';
   $endpoint->server = 'rest_server';
   $endpoint->path = 'sitereporting';
-  $endpoint->authentication = array();
+  $endpoint->authentication = array(
+    'adapt_monitor' => array(),
+  );
   $endpoint->server_settings = array(
     'formatters' => array(
       'json' => TRUE,
@@ -38,6 +41,7 @@ function adapt_monitor_default_services_endpoint() {
     ),
   );
   $endpoint->debug = 0;
+
   $endpoints[] = $endpoint;
 
   return $endpoints;

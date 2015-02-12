@@ -124,6 +124,19 @@ function adapt_monitor_services_resources() {
 }
 
 /**
+ * Implements hook_services_authentication().
+ */
+function adapt_monitor_services_authentication_info() {
+  return array(
+    'file' => 'includes/adapt_monitor.auth.inc',
+    'title' => t('Shared secret authentication'),
+    'description' => t('Require a shared secret code before allowing incoming trafic access.'),
+    'authenticate_call' => 'adapt_monitor_authenticate_call',
+  );
+}
+
+
+/**
  * Endpoint for adapt monitor site status.
  *
  * @param $data
