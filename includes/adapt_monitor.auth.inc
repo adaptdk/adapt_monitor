@@ -21,7 +21,7 @@
 function adapt_monitor_authenticate_call($settings, $method, $args) {
   $headers = apache_request_headers();
   $shared_secret = variable_get('adapt_monitor_shared_secret', '');
-  if(($shared_secret != $headers['Shared-Secret'])) {
+  if (($shared_secret != $headers['Shared-Secret'])) {
     return t("Secret key doesn't match");
   }
   return NULL;

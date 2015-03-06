@@ -1,5 +1,11 @@
 <?php
 /**
+ * Adapt monitor service file.
+ *
+ * @file adapt_monitor.services.inc
+ */
+
+/**
  * Implements hook_default_services_endpoint().
  */
 function adapt_monitor_default_services_endpoint() {
@@ -12,7 +18,7 @@ function adapt_monitor_default_services_endpoint() {
   $endpoint->server = 'rest_server';
   $endpoint->path = 'sitereporting';
   $endpoint->authentication = array(
-    'adapt_monitor' => array(),
+    'adapt_monitor' => 'adapt_monitor',
   );
   $endpoint->server_settings = array(
     'formatters' => array(

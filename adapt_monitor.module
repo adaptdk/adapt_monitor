@@ -1,4 +1,12 @@
 <?php
+/**
+ * Adapt monitor main file.
+ *
+ * @file
+ *   adapt_monitor.module
+ */
+
+include_once 'adapt_monitor.features.inc';
 
 /**
  * Implements hook_ctools_plugin_api().
@@ -7,10 +15,11 @@ function adapt_monitor_ctools_plugin_api($owner, $api) {
   if ($owner == 'services' && $api == 'services') {
     return array(
       'version' => 3,
-      'file' => 'adapt_monitor.services.inc', // Optional parameter to indicate the file name to load.
-      'path' => drupal_get_path('module', 'adapt_monitor') . '/includes', // If specifying the file key, path is required.
+      'file' => 'adapt_monitor.services.inc',
+      'path' => drupal_get_path('module', 'adapt_monitor') . '/includes',
     );
   }
+  return NULL;
 }
 
 /**
@@ -31,11 +40,22 @@ function adapt_monitor_menu() {
   return $items;
 }
 
-function adapt_monitor_admin_form($form, &$form_state) {
+/**
+ * Admin form for monitor functionality.
+ *
+ * @param array $form
+ *   Form array.
+ * @param array $form_state
+ *   Form state array.
+ *
+ * @return mixed
+ *   Form array.
+ */
+function adapt_monitor_admin_form(array $form, array &$form_state) {
   $results = db_select('adapt_monitor', 'a')
     ->fields('a')
     ->execute();
-  foreach($results as $result) {
+  foreach ($results as $result) {
     $data = unserialize($result->data);
     $form['site_' . $result->sid] = array(
       '#type' => 'fieldset',
@@ -47,13 +67,13 @@ function adapt_monitor_admin_form($form, &$form_state) {
       '#type' => 'item',
       '#title' => '',
       '#markup' => theme(
-        'adapt_monitor_info',
-        array(
-          'title' => $result->title,
-          'status' => $result->status,
-          'build' => $result->build,
-          'version' => $data['core']['drupal']['version'],
-        )
+          'adapt_monitor_info',
+          array(
+            'title' => $result->title,
+            'status' => $result->status,
+            'build' => $result->build,
+            'version' => $data['core']['drupal']['version'],
+          )
       ),
     );
     $form['site_' . $result->sid]['versions'] = array(
@@ -69,30 +89,18 @@ function adapt_monitor_admin_form($form, &$form_state) {
         '#markup' => theme(
           'adapt_monitor_item',
           array(
-           'name' => $name,
-            'version' => $info['version']
+            'name' => $name,
+            'version' => $info['version'],
           )
-        )
+        ),
       );
     }
 
   }
   $form['#attached']['css'] = array(
-    drupal_get_path('module', 'adapt_monitor') . '/adapt_monitor.css'
+    drupal_get_path('module', 'adapt_monitor') . '/adapt_monitor.css',
   );
   return $form;
-}
-
-/**
- * Implements hook_permission().
- */
-function adapt_monitor_permission() {
-  return array(
-    'adapt site report' => array(
-      'title' => t('Adapt site report'),
-      'description' => t('Report site status.'),
-    ),
-  );
 }
 
 /**
@@ -105,7 +113,7 @@ function adapt_monitor_services_resources() {
         'report' => array(
           'help' => 'Report a site state',
           'callback' => 'adapt_monitor_report',
-          'access arguments' => array('adapt site report'),
+          'access arguments' => array(TRUE),
           'access arguments append' => FALSE,
           'args' => array(
             array(
@@ -138,53 +146,56 @@ function adapt_monitor_services_authentication_info() {
 /**
  * Endpoint for adapt monitor site status.
  *
- * @param $data
- *   array of structured data describing a site state.
+ * @param array $data
+ *   Array of structured data describing a site state.
+ *
  * @return array
- *   array with status of the request.
- * @throws \Exception
+ *   Array with status of the request.
  */
-function adapt_monitor_report($data) {
-  if($data) {
+function adapt_monitor_report(array $data) {
+  if ($data) {
     $result = db_select('adapt_monitor', 'a')
       ->condition('title', $data['site_id'])
       ->fields('a', array('sid', 'build'))
       ->execute()
       ->fetchAssoc();
-    if(!empty($result)) {
-      if($result['build'] <> $data['Build']['buildNumber']) {
-        db_update('adapt_monitor')
-          ->fields(array(
-            'title' => $data['site_id'],
-            'build' => $data['Build']['buildNumber'],
-            'status' => 1,
-            'updated' => time(),
-            'data' => serialize($data)
-          ))
-          ->condition('sid', $result['sid'])
-          ->execute();
-      } else {
-        db_update('adapt_monitor')
-          ->fields(array(
-            'updated' => time(),
-          ))
-          ->condition('sid', $result['sid'])
-          ->execute();
+    $sites = entity_load('site', FALSE, array('title' => $data['site_id']));
+    if (!empty($sites)) {
+      $site = current($sites);
+      $entity_type_name = 'site';
+      $site_wrapper = entity_metadata_wrapper($entity_type_name, $site);
+      $site_wrapper->field_state->set('1');
+      $build = $site_wrapper->field_build_number->value();
+      if ($build <> $data['Build']['buildNumber']) {
+        $site_wrapper->title = $data['site_id'];
+        $site_wrapper->field_build_number->set($data['Build']['buildNumber']);
+        $site_wrapper->field_module_states->set(serialize($data));
+        if (!empty($data['core']['drupal']['version'])) {
+          $site_wrapper->field_core_version->set($data['core']['drupal']['version']);
+        }
+        $site_wrapper->save();
+      }
+      else {
+        $site_wrapper->save();
         return array(
           'status' => 'received',
           'message' => t('Active state maintained.'),
         );
       }
-    } else {
-      db_insert('adapt_monitor') // Table name no longer needs {}
-        ->fields(array(
-          'title' => $data['site_id'],
-          'build' => $data['Build']['buildNumber'],
-          'status' => 1,
-          'updated' => time(),
-          'data' => serialize($data)
-        ))
-        ->execute();
+    }
+    else {
+      $entity_type_name = 'site';
+      $bundle_name = 'drupal_site';
+      $site = entity_create($entity_type_name, array('type' => $bundle_name));
+      $site_wrapper = entity_metadata_wrapper($entity_type_name, $site);
+      $site_wrapper->title = $data['site_id'];
+      $site_wrapper->field_state->set('1');
+      $site_wrapper->field_build_number->set($data['Build']['buildNumber']);
+      $site_wrapper->field_module_states->set(serialize($data));
+      if (!empty($data['core']['drupal']['version'])) {
+        $site_wrapper->field_core_version->set($data['core']['drupal']['version']);
+      }
+      $site_wrapper->save();
     }
 
     return array(
@@ -198,7 +209,10 @@ function adapt_monitor_report($data) {
   );
 }
 
-function adapt_monitor_theme($existing, $type, $theme, $path){
+/**
+ * Implements hook_theme().
+ */
+function adapt_monitor_theme($existing, $type, $theme, $path) {
   return array(
     'adapt_monitor_info' => array(
       'variables' => array(
