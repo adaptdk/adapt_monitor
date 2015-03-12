@@ -19,6 +19,9 @@ function adapt_monitor_ctools_plugin_api($owner, $api) {
       'path' => drupal_get_path('module', 'adapt_monitor') . '/includes',
     );
   }
+  if ($owner == 'ctools' && $plugin_type == 'content_types') {
+    return "plugins/$plugin_type";
+  }
   return NULL;
 }
 
@@ -28,12 +31,12 @@ function adapt_monitor_ctools_plugin_api($owner, $api) {
 function adapt_monitor_menu() {
   $items = array();
 
-  $items['admin/config/system/adapt-monitor'] = array(
+  $items['webstate/%'] = array(
     'title' => 'Adapt monitoring',
     'description' => 'Display monitoring information for drupal sites.',
     'access callback' => TRUE,
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('adapt_monitor_admin_form'),
+    'page callback' => 'adapt_monitor_view',
+    'page arguments' => array(1),
     'type' => MENU_NORMAL_ITEM,
   );
 
@@ -51,56 +54,36 @@ function adapt_monitor_menu() {
  * @return mixed
  *   Form array.
  */
-function adapt_monitor_admin_form(array $form, array &$form_state) {
-  $results = db_select('adapt_monitor', 'a')
-    ->fields('a')
-    ->execute();
-  foreach ($results as $result) {
-    $data = unserialize($result->data);
-    $form['site_' . $result->sid] = array(
-      '#type' => 'fieldset',
-      '#title' => '',
-      '#collapsible' => FALSE,
-      '#collapsed' => FALSE,
+function adapt_monitor_view($entity_id) {
+  $site = entity_load('site', array($entity_id));
+  if ($site) {
+    $site = $site[$entity_id];
+
+    $entity_type_name = 'site';
+    $site_wrapper = entity_metadata_wrapper($entity_type_name, $site);
+    $serialised_data = $site_wrapper->field_module_states->value();
+    $data = unserialize($serialised_data);
+    $table_header = array(
+      'module' => t('Module'),
+      'version' => t('Version'),
+      'patches' => t('Patches'),
     );
-    $form['site_' . $result->sid]['info'] = array(
-      '#type' => 'item',
-      '#title' => '',
-      '#markup' => theme(
-          'adapt_monitor_info',
-          array(
-            'title' => $result->title,
-            'status' => $result->status,
-            'build' => $result->build,
-            'version' => $data['core']['drupal']['version'],
-          )
-      ),
-    );
-    $form['site_' . $result->sid]['versions'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('State'),
-      '#weight' => 5,
-      '#collapsible' => TRUE,
-      '#collapsed' => TRUE,
-    );
+    $rows = array();
     foreach ($data['contrib'] as $name => $info) {
-      $form['site_' . $result->sid]['versions'][$name] = array(
-        '#type' => 'markup',
-        '#markup' => theme(
-          'adapt_monitor_item',
-          array(
-            'name' => $name,
-            'version' => $info['version'],
-          )
-        ),
+      $row = array(
+        $name,
+        $info['version']
       );
+      if(isset($info['patches'])) {
+        $row[] = implode('<br/>', $info['patches']);
+      } else {
+        $row[] = '';
+      }
+      $rows[] = $row;
     }
 
   }
-  $form['#attached']['css'] = array(
-    drupal_get_path('module', 'adapt_monitor') . '/adapt_monitor.css',
-  );
-  return $form;
+  return theme('table', array('header' => $table_header, 'rows' => $rows));
 }
 
 /**
@@ -113,7 +96,8 @@ function adapt_monitor_services_resources() {
         'report' => array(
           'help' => 'Report a site state',
           'callback' => 'adapt_monitor_report',
-          'access arguments' => array(TRUE),
+          'access arguments' => array('access content'),
+          'access callback' => 'adapt_monitor_access_callback',
           'access arguments append' => FALSE,
           'args' => array(
             array(
@@ -128,6 +112,10 @@ function adapt_monitor_services_resources() {
       ),
     ),
   );
+}
+
+function adapt_monitor_access_callback() {
+  return TRUE;
 }
 
 /**
