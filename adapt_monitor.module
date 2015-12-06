@@ -19,8 +19,8 @@ function adapt_monitor_ctools_plugin_api($owner, $api) {
       'path' => drupal_get_path('module', 'adapt_monitor') . '/includes',
     );
   }
-  if ($owner == 'ctools' && $plugin_type == 'content_types') {
-    return "plugins/$plugin_type";
+  if ($owner == 'ctools' && $api == 'content_types') {
+    return "plugins/$api";
   }
   return NULL;
 }
@@ -221,4 +221,40 @@ function adapt_monitor_theme($existing, $type, $theme, $path) {
       'path' => $path . '/tpl',
     ),
   );
+}
+
+/**
+ * Implements hook_cronapi().
+ */
+function adapt_monitor_cronapi() {
+  $items = array();
+
+  $items['adapt_monitor_update_list'] = array(
+    'title' => t('Adapt monitor update list'),
+    'file' => 'adapt_monitor.jobs.inc',
+    'callback' => 'adapt_monitor_update_list',
+    'enabled' => TRUE,
+    'tags' => array('Adapt monitor'),
+    'scheduler' => array(
+      'name' => 'crontab',
+      'crontab' => array(
+        'rules' => array('* * */1+@ * *'),
+      ),
+    ),
+  );
+  $items['adapt_monitor_fetch_updates'] = array(
+    'title' => t('Adapt monitor fetch updates'),
+    'file' => 'adapt_monitor.jobs.inc',
+    'callback' => 'adapt_monitor_fetch_updates',
+    'enabled' => TRUE,
+    'tags' => array('Adapt monitor'),
+    'scheduler' => array(
+      'name' => 'crontab',
+      'crontab' => array(
+        'rules' => array('* * */1+@ * *'),
+      ),
+    ),
+  );
+
+  return $items;
 }
