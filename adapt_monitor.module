@@ -67,6 +67,7 @@ function adapt_monitor_view($entity_id) {
       'module' => t('Module'),
       'version' => t('Version'),
       'patches' => t('Patches'),
+      'status' => t('Status'),
     );
     $rows = array();
     foreach ($data['contrib'] as $name => $info) {
@@ -78,6 +79,18 @@ function adapt_monitor_view($entity_id) {
         $row[] = implode('<br/>', $info['patches']);
       } else {
         $row[] = '';
+      }
+      $cid = 'adapt_monitor_available_releases::' . $name;
+      $cache = _update_cache_get($cid);
+      if (!empty($cache->data)) {
+        $current_state = $cache->data;
+        $releases = array_keys($current_state['releases']);
+        if ($info['version'] >= current($releases)) {
+          $row[] = '<span class="module-status warning">' . t('Needs update') . '</span>';
+        }
+        else {
+          $row[] = '<span class="module-status status">' . t('Up to date') . '</span>';
+        }
       }
       $rows[] = $row;
     }
@@ -229,19 +242,19 @@ function adapt_monitor_theme($existing, $type, $theme, $path) {
 function adapt_monitor_cronapi() {
   $items = array();
 
-  $items['adapt_monitor_update_list'] = array(
-    'title' => t('Adapt monitor update list'),
-    'file' => 'adapt_monitor.jobs.inc',
-    'callback' => 'adapt_monitor_update_list',
-    'enabled' => TRUE,
-    'tags' => array('Adapt monitor'),
-    'scheduler' => array(
-      'name' => 'crontab',
-      'crontab' => array(
-        'rules' => array('* * */1+@ * *'),
-      ),
-    ),
-  );
+//  $items['adapt_monitor_update_list'] = array(
+//    'title' => t('Adapt monitor update list'),
+//    'file' => 'adapt_monitor.jobs.inc',
+//    'callback' => 'adapt_monitor_update_list',
+//    'enabled' => TRUE,
+//    'tags' => array('Adapt monitor'),
+//    'scheduler' => array(
+//      'name' => 'crontab',
+//      'crontab' => array(
+//        'rules' => array('* * */1+@ * *'),
+//      ),
+//    ),
+//  );
   $items['adapt_monitor_fetch_updates'] = array(
     'title' => t('Adapt monitor fetch updates'),
     'file' => 'adapt_monitor.jobs.inc',

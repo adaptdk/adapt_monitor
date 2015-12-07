@@ -14,37 +14,38 @@ function adapt_monitor_get_available($refresh = FALSE) {
   $num_avail = count($available);
 
   $projects = adapt_monitor_update_list();
-  foreach ($projects as $key => $project) {
-    // If there's no data at all, we clearly need to fetch some.
-    if (empty($available[$key])) {
-      adapt_monitor_create_fetch_task($key, $project);
-      $needs_refresh = TRUE;
-      continue;
-    }
+  foreach ($projects as $site => $modules) {
+    foreach ($modules as $key => $project) {
+      // If there's no data at all, we clearly need to fetch some.
+      if (empty($available[$site . ':' . $key])) {
+        adapt_monitor_create_fetch_task($site, $project);
+        $needs_refresh = TRUE;
+        continue;
+      }
 
-    // See if the .info file is newer than the last time we checked for data,
-    // and if so, mark this project's data as needing to be re-fetched. Any
-    // time an admin upgrades their local installation, the .info file will
-    // be changed, so this is the only way we can be sure we're not showing
-    // bogus information right after they upgrade.
-    if ($project['info']['_info_file_ctime'] > $available[$key]['last_fetch']) {
-      $available[$key]['fetch_status'] = UPDATE_FETCH_PENDING;
-    }
+      // See if the .info file is newer than the last time we checked for data,
+      // and if so, mark this project's data as needing to be re-fetched. Any
+      // time an admin upgrades their local installation, the .info file will
+      // be changed, so this is the only way we can be sure we're not showing
+      // bogus information right after they upgrade.
+      if ($project['info']['_info_file_ctime'] > $available[$key]['last_fetch']) {
+        $available[$site . ':' . $key]['fetch_status'] = UPDATE_FETCH_PENDING;
+      }
 
-    // If we have project data but no release data, we need to fetch. This
-    // can be triggered when we fail to contact a release history server.
-    if (empty($available[$key]['releases'])) {
-      $available[$key]['fetch_status'] = UPDATE_FETCH_PENDING;
-    }
+      // If we have project data but no release data, we need to fetch. This
+      // can be triggered when we fail to contact a release history server.
+      if (empty($available[$site . ':' . $key]['releases'])) {
+        $available[$site . ':' . $key]['fetch_status'] = UPDATE_FETCH_PENDING;
+      }
 
-    // If we think this project needs to fetch, actually create the task now
-    // and remember that we think we're missing some data.
-    if (!empty($available[$key]['fetch_status']) && $available[$key]['fetch_status'] == UPDATE_FETCH_PENDING) {
-      adapt_monitor_create_fetch_task($key, $project);
-      $needs_refresh = TRUE;
+      // If we think this project needs to fetch, actually create the task now
+      // and remember that we think we're missing some data.
+      if (!empty($available[$site . ':' . $key]['fetch_status']) && $available[$site . ':' . $key]['fetch_status'] == UPDATE_FETCH_PENDING) {
+        adapt_monitor_create_fetch_task($site, $project);
+        $needs_refresh = TRUE;
+      }
     }
   }
-
   if ($needs_refresh && $refresh) {
     // Attempt to drain the queue of fetch tasks.
     _adapt_monitor_fetch_data();
@@ -113,19 +114,20 @@ function adapt_monitor_create_fetch_task($site, $project) {
  */
 function adapt_monitor_update_list() {
   $results = db_select('field_data_field_module_states')
-    ->fields('field_data_field_module_states', array('entity_id', 'field_module_state_value'))
+    ->fields('field_data_field_module_states', array('entity_id', 'field_module_states_value'))
     ->execute();
   $modules = cache_get('adapt_monitor:update:list');
   foreach ($results as $result) {
-    $data = unserialize($result['field_module_state_value']);
-    dpm($data);
+    $data = unserialize($result->field_module_states_value);
     foreach ($data['contrib'] as $name => $info) {
       if (!isset($modules[$name])) {
-        $modules[$result['entity_id']] = array(
+        $modules[$result->entity_id][$name] = array(
+          'project_type' => 'contrib',
           'name' => $name,
           'version' => $info['version'],
           'project' => $name,
           '_info_file_ctime' => isset($info['datetime']) ? $info['datetime'] : '',
+          'site' => $result->entity_id,
         );
       }
     }
@@ -150,20 +152,56 @@ function _adapt_monitor_fetch_data() {
  * Check for module updates.
  */
 function adapt_monitor_fetch_updates() {
-  $modules = cache_get('adapt_monitor:update:list');
-  foreach ($modules as $name => $data) {
-    update_process_fetch_task();
-    $data['info'] = array(
-      'name' => $name,
-      'version' => $data['version'],
-      'project' => $name,
-      '_info_file_ctime' => isset($data['datetime']) ? $data['datetime'] : '',
-    );
-    adapt_monitor_fetch_status($data);
+  $frequency = variable_get('update_check_frequency', 1);
+  $interval = 60 * 60 * 24 * $frequency;
+  if ((REQUEST_TIME - variable_get('adapt_monitor_last_check', 0)) > $interval) {
+    // If the configured update interval has elapsed, we want to invalidate
+    // the cached data for all projects, attempt to re-fetch, and trigger any
+    // configured notifications about the new status.
+    _adapt_monitor_refresh();
+    _adapt_monitor_fetch_data();
+  }
+  else {
+    // Otherwise, see if any individual projects are now stale or still
+    // missing data, and if so, try to fetch the data.
+    adapt_monitor_get_available(TRUE);
+  }
+
+  // Clear garbage from disk.
+  update_clear_update_disk_cache();
+}
+
+/**
+ * Clears out all the cached available update data and initiates re-fetching.
+ */
+function _adapt_monitor_refresh() {
+  module_load_include('inc', 'update', 'update.compare');
+
+  // Since we're fetching new available update data, we want to clear
+  // our cache of both the projects we care about, and the current update
+  // status of the site. We do *not* want to clear the cache of available
+  // releases just yet, since that data (even if it's stale) can be useful
+  // during update_get_projects(); for example, to modules that implement
+  // hook_system_info_alter() such as cvs_deploy.
+  _update_cache_clear('update_project_projects');
+  _update_cache_clear('update_project_data');
+
+  $projects = adapt_monitor_update_list();
+
+  // Now that we have the list of projects, we should also clear our cache of
+  // available release data, since even if we fail to fetch new data, we need
+  // to clear out the stale data at this point.
+  _update_cache_clear('adapt_monitor_available_releases::', TRUE);
+
+  foreach ($projects as $site => $modules) {
+    foreach ($modules as $key => $project) {
+      adapt_monitor_create_fetch_task($site, $project);
+    }
   }
 }
 
 function adapt_monitor_fetch_status($data) {
+  module_load_include('inc', 'update', 'update.fetch');
   global $base_url;
   $fail = &drupal_static(__FUNCTION__, array());
   // This can be in the middle of a long-running batch, so REQUEST_TIME won't
@@ -184,6 +222,7 @@ function adapt_monitor_fetch_status($data) {
   $url = _update_build_fetch_url($data, $site_key);
   $fetch_url_base = _update_get_fetch_url_base($data);
   $project_name = $data['name'];
+  $site = $data['site'];
 
   if (empty($fail[$fetch_url_base]) || $fail[$fetch_url_base] < $max_fetch_attempts) {
     $xml = drupal_http_request($url);
@@ -218,10 +257,10 @@ function adapt_monitor_fetch_status($data) {
   _update_cache_set('fetch_failures', $fail, $now + (60 * 5));
 
   // Whether this worked or not, we did just (try to) check for updates.
-  variable_set('update_last_check', $now);
+  variable_set('adapt_monitor_last_check', $now);
 
   // Now that we processed the fetch task for this project, clear out the
   // record in {cache_update} for this task so we're willing to fetch again.
-  _update_cache_clear('fetch_task::' . $project_name);
+  _update_cache_clear('fetch_task::' . $site . '::' . $project_name);
   return $success;
 }
