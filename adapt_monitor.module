@@ -19,8 +19,8 @@ function adapt_monitor_ctools_plugin_api($owner, $api) {
       'path' => drupal_get_path('module', 'adapt_monitor') . '/includes',
     );
   }
-  if ($owner == 'ctools' && $plugin_type == 'content_types') {
-    return "plugins/$plugin_type";
+  if ($owner == 'ctools' && $api == 'content_types') {
+    return "plugins/$api";
   }
   return NULL;
 }
@@ -67,6 +67,7 @@ function adapt_monitor_view($entity_id) {
       'module' => t('Module'),
       'version' => t('Version'),
       'patches' => t('Patches'),
+      'status' => t('Status'),
     );
     $rows = array();
     foreach ($data['contrib'] as $name => $info) {
@@ -78,6 +79,18 @@ function adapt_monitor_view($entity_id) {
         $row[] = implode('<br/>', $info['patches']);
       } else {
         $row[] = '';
+      }
+      $cid = 'adapt_monitor_available_releases::' . $name;
+      $cache = _update_cache_get($cid);
+      if (!empty($cache->data)) {
+        $current_state = $cache->data;
+        $releases = array_keys($current_state['releases']);
+        if ($info['version'] >= current($releases)) {
+          $row[] = '<span class="module-status warning">' . t('Needs update') . '</span>';
+        }
+        else {
+          $row[] = '<span class="module-status status">' . t('Up to date') . '</span>';
+        }
       }
       $rows[] = $row;
     }
@@ -221,4 +234,40 @@ function adapt_monitor_theme($existing, $type, $theme, $path) {
       'path' => $path . '/tpl',
     ),
   );
+}
+
+/**
+ * Implements hook_cronapi().
+ */
+function adapt_monitor_cronapi() {
+  $items = array();
+
+//  $items['adapt_monitor_update_list'] = array(
+//    'title' => t('Adapt monitor update list'),
+//    'file' => 'adapt_monitor.jobs.inc',
+//    'callback' => 'adapt_monitor_update_list',
+//    'enabled' => TRUE,
+//    'tags' => array('Adapt monitor'),
+//    'scheduler' => array(
+//      'name' => 'crontab',
+//      'crontab' => array(
+//        'rules' => array('* * */1+@ * *'),
+//      ),
+//    ),
+//  );
+  $items['adapt_monitor_fetch_updates'] = array(
+    'title' => t('Adapt monitor fetch updates'),
+    'file' => 'adapt_monitor.jobs.inc',
+    'callback' => 'adapt_monitor_fetch_updates',
+    'enabled' => TRUE,
+    'tags' => array('Adapt monitor'),
+    'scheduler' => array(
+      'name' => 'crontab',
+      'crontab' => array(
+        'rules' => array('* * */1+@ * *'),
+      ),
+    ),
+  );
+
+  return $items;
 }
